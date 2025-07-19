@@ -17,52 +17,59 @@ trait Rateable
      * @return Rating
      */
 
-     private function byUser($user_id = null) {
-        if(! $user_id) {
-            return Auth::id();
+    private function byUser($user = null)
+    {
+        if (! $user) {
+            return Auth::user();
         }
 
-         $userClass = Config::get('auth.model');
-          if (is_null($userClass)) {
+        $userClass = Config::get('auth.model');
+        if (is_null($userClass)) {
             $userClass = Config::get('auth.providers.users.model');
-          }
+        }
 
-        return (!! $userClass::whereId($user_id)->count())? $user_id: Auth::id();
-     }
-    
-    public function rate($value, $comment = null, $user_id = null)
+        return (!! $userClass::whereId($user->id)->count()) ? $user : Auth::user();
+    }
+
+    public function rate($value, $comment = null, $user = null)
     {
-        $user_id = $this->byUser($user_id);
+        $user = $this->byUser($user);
         $rating = new Rating();
         $rating->rating = $value;
         $rating->comment = $comment;
-        $rating->user_id = $user_id;
+        $rating->user_id = $user?->id;
+        $rating->user_type = get_class($user);
 
         $this->ratings()->save($rating);
     }
 
-    public function rateOnce($value, $comment = null, $user_id = null)
+    public function rateOnce($value, $comment = null, $user = null)
     {
-        $user_id = $this->byUser($user_id);
+        $user = $this->byUser($user);
         $rating = Rating::query()
             ->where('rateable_type', '=', $this->getMorphClass())
             ->where('rateable_id', '=', $this->id)
-            ->where('user_id', '=', $user_id)
-            ->first()
-        ;
+            ->where('user_id', '=', $user?->id)
+            ->where('user_type', '=', get_class($user))
+            ->first();
 
         if ($rating) {
             $rating->rating = $value;
             $rating->comment = $comment;
             $rating->save();
         } else {
-            $this->rate($value, $comment, $user_id);
+            $this->rate($value, $comment, $user);
         }
     }
 
     public function ratings()
     {
         return $this->morphMany('willvincent\Rateable\Rating', 'rateable');
+    }
+
+    public function userRatings()
+    {
+        return $this->morphMany('willvincent\Rateable\Rating', 'user');
     }
 
     public function averageRating()
@@ -85,16 +92,16 @@ trait Rateable
         return $this->ratings()->groupBy('user_id')->pluck('user_id')->count();
     }
 
-    public function userAverageRating($user_id = null)
+    public function userAverageRating($user)
     {
-        $user_id = $this->byUser($user_id);
-        return $this->ratings()->where('user_id', $user_id)->avg('rating');
+        $user = $this->byUser($user);
+        return $this->ratings()->where('user_id', $user?->id)->avg('rating');
     }
 
-    public function userSumRating($user_id = null)
+    public function userSumRating($user = null)
     {
-        $user_id = $this->byUser($user_id);
-        return $this->ratings()->where('user_id', $user_id)->sum('rating');
+        $user = $this->byUser($user);
+        return $this->ratings()->where('user_id', $user?->id)->sum('rating');
     }
 
     public function ratingPercent($max = 5, bool $rounded = false)
@@ -103,10 +110,10 @@ trait Rateable
         $total = $this->sumRating();
         // return "$total || $quantity";
 
-        $is_rounded = is_bool($rounded)? $rounded: false;
-        if($rounded) {
+        $is_rounded = is_bool($rounded) ? $rounded : false;
+        if ($rounded) {
             return ($quantity * $max) > 0 ? ceil(($total / ($quantity * $max)) * 100) : 0;
-        } else { 
+        } else {
             return ($quantity * $max) > 0 ? $total / (($quantity * $max) / 100) : 0;
         }
     }
